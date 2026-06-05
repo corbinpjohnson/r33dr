@@ -36,3 +36,42 @@ export function splitRunIntoBoxes(
   });
   return boxes;
 }
+
+// Wrap every text word under `root` in <span data-w="K"> with sequential K,
+// matching the same /\s+/ tokenization the loaders use. Mutates in place.
+export function wrapWords(root: HTMLElement): void {
+  const skip = new Set(['SCRIPT', 'STYLE', 'HEAD']);
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode: (node) =>
+      node.parentElement && skip.has(node.parentElement.nodeName)
+        ? NodeFilter.FILTER_REJECT
+        : NodeFilter.FILTER_ACCEPT,
+  });
+  const textNodes: Text[] = [];
+  let n = walker.nextNode();
+  while (n) {
+    textNodes.push(n as Text);
+    n = walker.nextNode();
+  }
+
+  let index = 0;
+  for (const textNode of textNodes) {
+    const text = textNode.textContent ?? '';
+    if (!text.trim()) continue;
+    const frag = document.createDocumentFragment();
+    // Preserve original whitespace by splitting on word boundaries.
+    const parts = text.split(/(\s+)/); // words and the whitespace between them
+    for (const part of parts) {
+      if (part.length === 0) continue;
+      if (/^\s+$/.test(part)) {
+        frag.appendChild(document.createTextNode(part));
+      } else {
+        const span = document.createElement('span');
+        span.setAttribute('data-w', String(index++));
+        span.textContent = part;
+        frag.appendChild(span);
+      }
+    }
+    textNode.parentNode?.replaceChild(frag, textNode);
+  }
+}

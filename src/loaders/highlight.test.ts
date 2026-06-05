@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { textWordOrdinal, splitRunIntoBoxes } from './highlight';
+import { textWordOrdinal, splitRunIntoBoxes, wrapWords } from './highlight';
 import { IMG_PREFIX } from './types';
 
 describe('textWordOrdinal', () => {
@@ -35,5 +35,27 @@ describe('splitRunIntoBoxes', () => {
     expect(boxes[0].w).toBeCloseTo(40); // 2 chars / 5 total (incl space) * 100
     expect(boxes[1].x).toBeCloseTo(60); // after "ab" + space
     expect(boxes[1].w).toBeCloseTo(40);
+  });
+});
+
+describe('wrapWords', () => {
+  it('wraps each text word in a data-w span with sequential indices', () => {
+    const el = document.createElement('div');
+    el.innerHTML = '<p>hello brave world</p>';
+    wrapWords(el);
+    const spans = el.querySelectorAll('span[data-w]');
+    expect(spans.length).toBe(3);
+    expect(spans[0].getAttribute('data-w')).toBe('0');
+    expect(spans[2].textContent).toBe('world');
+  });
+
+  it('skips SCRIPT/STYLE text and preserves images', () => {
+    const el = document.createElement('div');
+    el.innerHTML = '<style>x{}</style><p>hi</p><img src="a.png">';
+    wrapWords(el);
+    const spans = el.querySelectorAll('span[data-w]');
+    expect(spans.length).toBe(1);
+    expect(spans[0].textContent).toBe('hi');
+    expect(el.querySelector('img')).not.toBeNull();
   });
 });
