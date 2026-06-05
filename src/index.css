@@ -13,3 +13,10 @@ body {
 #root {
   width: 100%;
 }
+
+.vr-focus {
+  background-color: rgba(239, 68, 68, 0.25);
+  color: #dc2626;
+  border-radius: 2px;
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.6);
+}
