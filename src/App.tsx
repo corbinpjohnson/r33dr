@@ -47,7 +47,7 @@ function App() {
           </label>
         </div>
       ) : (
-        <div className="w-full max-w-4xl">
+        <div className="w-full max-w-7xl">
           <div className="flex items-center justify-between mb-8 px-4">
             <div className="flex items-center gap-3">
               <div className="bg-indigo-500/10 p-2 rounded-lg">

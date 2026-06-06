@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Play, Pause, FastForward, Rewind, AlertCircle, Eye } from 'lucide-react';
+import { Play, Pause, FastForward, Rewind, AlertCircle, Eye, SkipBack, SkipForward } from 'lucide-react';
 import { loadEpub } from '../loaders/epub';
 import { loadPdf } from '../loaders/pdf';
 import { ocrCanvas } from '../loaders/ocr';
 import { IMG_PREFIX, type PageData } from '../loaders/types';
+import PagePreview from './PagePreview';
 
 interface RSVPReaderProps {
   file: ArrayBuffer;
@@ -130,22 +131,37 @@ const RSVPReader: React.FC<RSVPReaderProps> = ({ file }) => {
     setIsPlaying(prev => !prev);
   }, []);
 
+  const goToPage = useCallback((target: number) => {
+    if (pages.length === 0) return;
+    const clamped = Math.max(0, Math.min(pages.length - 1, target));
+    if (timerRef.current) clearTimeout(timerRef.current);
+    setCurrentPageIndex(clamped);
+    setCurrentWordIndex(0);
+    setReaderState('PREVIEW');
+  }, [pages.length]);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.code === 'Space') {
         e.preventDefault();
         if (readerState === 'IMAGE_INTERCEPT') {
-            setCurrentWordIndex(prev => prev + 1);
-            setReaderState('RSVP');
-            setIsPlaying(true);
+          setCurrentWordIndex(prev => prev + 1);
+          setReaderState('RSVP');
+          setIsPlaying(true);
         } else {
-            togglePlay();
+          togglePlay();
         }
+      } else if (e.code === 'ArrowRight') {
+        e.preventDefault();
+        goToPage(currentPageIndex + 1);
+      } else if (e.code === 'ArrowLeft') {
+        e.preventDefault();
+        goToPage(currentPageIndex - 1);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [togglePlay, readerState]);
+  }, [togglePlay, readerState, goToPage, currentPageIndex]);
 
   if (readerState === 'LOADING') {
     return (
@@ -195,22 +211,14 @@ const RSVPReader: React.FC<RSVPReaderProps> = ({ file }) => {
     : 0;
 
   return (
-    <div className="space-y-12 max-w-5xl mx-auto">
+    <div className="space-y-8 w-full mx-auto">
       {/* Dynamic Display Area */}
-      <div className={`relative h-[500px] bg-slate-950 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl transition-all duration-500`}>
+      <div className={`relative h-[clamp(420px,70vh,1100px)] bg-slate-950 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl transition-all duration-500`}>
         
         {/* State 1: Full Page Preview */}
         {readerState === 'PREVIEW' && (
             <div className="absolute inset-0 flex flex-col animate-in fade-in duration-500">
-                {currentPage.previewImage ? (
-                    <div className="flex-1 overflow-auto flex justify-center p-6 bg-white">
-                        <img src={currentPage.previewImage} alt={`Preview of ${currentPage.label}`} className="max-w-full h-auto object-contain shadow-lg" />
-                    </div>
-                ) : (
-                    <div className="flex-1 overflow-auto p-12 bg-white text-slate-900 font-serif leading-relaxed prose prose-slate max-w-none">
-                        <div dangerouslySetInnerHTML={{ __html: currentPage.html ?? '' }} />
-                    </div>
-                )}
+                <PagePreview page={currentPage} currentWordIndex={currentWordIndex} faded={false} />
                 <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-transparent pointer-events-none" />
                 <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2">
                     <div className="px-4 py-2 bg-indigo-500 text-white rounded-full font-black text-sm shadow-xl flex items-center gap-2">
@@ -221,14 +229,21 @@ const RSVPReader: React.FC<RSVPReaderProps> = ({ file }) => {
             </div>
         )}
 
-        {/* State 2: RSVP Speed Reading */}
+        {/* State 2: RSVP Speed Reading — focus word floats over the faded page */}
         {readerState === 'RSVP' && (
-            <div className={`absolute inset-0 flex flex-col items-center justify-center transition-all duration-500 ${isPeripheralMode ? 'bg-black' : 'bg-slate-900'}`}>
-                <div className="absolute top-0 bottom-0 left-1/2 w-px bg-indigo-500/10 -translate-x-1/2"></div>
-                <div className={`text-7xl font-mono font-bold flex transition-all duration-300 ${isPeripheralMode ? 'scale-110' : ''}`}>
-                    <span className={`text-right flex-1 min-w-[350px] transition-all duration-300 ${isPeripheralMode ? 'opacity-0 scale-95' : 'text-slate-600'}`}>{prefix}</span>
-                    <span className="text-indigo-400 drop-shadow-[0_0_25px_rgba(129,140,248,0.5)]">{focus}</span>
-                    <span className={`text-left flex-1 min-w-[350px] transition-all duration-300 ${isPeripheralMode ? 'opacity-0 scale-95' : 'text-slate-400'}`}>{suffix}</span>
+            <div className={`absolute inset-0 flex flex-col transition-all duration-500 ${isPeripheralMode ? 'bg-black' : 'bg-slate-900'}`}>
+                {!isPeripheralMode && (
+                    <div className="absolute inset-0 flex flex-col">
+                        <PagePreview page={currentPage} currentWordIndex={currentWordIndex} faded={true} />
+                    </div>
+                )}
+                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                    <div className="absolute top-0 bottom-0 left-1/2 w-px bg-indigo-500/10 -translate-x-1/2"></div>
+                    <div className={`text-7xl font-mono font-bold flex transition-all duration-300 px-8 py-4 rounded-3xl bg-slate-950/70 backdrop-blur-sm ${isPeripheralMode ? 'scale-110' : ''}`}>
+                        <span className={`text-right flex-1 min-w-[300px] transition-all duration-300 ${isPeripheralMode ? 'opacity-0 scale-95' : 'text-slate-500'}`}>{prefix}</span>
+                        <span className="text-indigo-400 drop-shadow-[0_0_25px_rgba(129,140,248,0.5)]">{focus}</span>
+                        <span className={`text-left flex-1 min-w-[300px] transition-all duration-300 ${isPeripheralMode ? 'opacity-0 scale-95' : 'text-slate-300'}`}>{suffix}</span>
+                    </div>
                 </div>
             </div>
         )}
@@ -250,12 +265,14 @@ const RSVPReader: React.FC<RSVPReaderProps> = ({ file }) => {
       {/* Persistent Controls */}
       <div className="bg-slate-900/80 backdrop-blur-xl border border-slate-800 rounded-3xl p-8 space-y-8 shadow-2xl">
         <div className="flex items-center justify-between gap-12">
-            <div className="flex items-center gap-6">
+            <div className="flex items-center gap-4">
+                <button onClick={() => goToPage(currentPageIndex - 1)} disabled={currentPageIndex === 0} className="p-4 text-slate-500 hover:text-indigo-400 hover:bg-slate-800 rounded-2xl transition-all disabled:opacity-30 disabled:hover:bg-transparent" title="Previous page (←)"><SkipBack size={28} /></button>
                 <button onClick={() => setCurrentWordIndex(Math.max(0, currentWordIndex - 25))} className="p-4 text-slate-500 hover:text-indigo-400 hover:bg-slate-800 rounded-2xl transition-all"><Rewind size={32} /></button>
                 <button onClick={togglePlay} className="w-24 h-24 flex items-center justify-center bg-indigo-500 hover:bg-indigo-400 text-white rounded-[2rem] shadow-xl shadow-indigo-500/30 transition-all active:scale-95">
                     {isPlaying ? <Pause size={48} fill="currentColor" /> : <Play size={48} className="ml-1" fill="currentColor" />}
                 </button>
                 <button onClick={() => setCurrentWordIndex(Math.min(currentPage.tokens.length - 1, currentWordIndex + 25))} className="p-4 text-slate-500 hover:text-indigo-400 hover:bg-slate-800 rounded-2xl transition-all"><FastForward size={32} /></button>
+                <button onClick={() => goToPage(currentPageIndex + 1)} disabled={currentPageIndex === pages.length - 1} className="p-4 text-slate-500 hover:text-indigo-400 hover:bg-slate-800 rounded-2xl transition-all disabled:opacity-30 disabled:hover:bg-transparent" title="Next page (→)"><SkipForward size={28} /></button>
             </div>
 
             <div className="flex-1 space-y-4">
