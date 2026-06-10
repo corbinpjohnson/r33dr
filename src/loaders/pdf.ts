@@ -65,18 +65,19 @@ export async function loadPdf(
       const result: OcrResult = await ocrCanvas(canvas, addLog);
       tokens = result.tokens;
       boxes = result.boxes;
+      if (tokens.length === 0) {
+        addLog(`Page ${i}: No text found even after OCR (likely an image/diagram).`);
+      }
     }
 
-    if (tokens.length > 0) {
-      pages.push({
-        label: `Page ${i}`,
-        tokens,
-        previewImage: dataUrl,
-        wordBoxes: boxes.length === tokens.length ? boxes : undefined,
-        imageWidth: canvas.width,
-        imageHeight: canvas.height,
-      });
-    }
+    pages.push({
+      label: `Page ${i}`,
+      tokens,
+      previewImage: dataUrl,
+      wordBoxes: boxes.length === tokens.length ? boxes : undefined,
+      imageWidth: canvas.width,
+      imageHeight: canvas.height,
+    });
   }
 
   if (pages.length === 0) {
