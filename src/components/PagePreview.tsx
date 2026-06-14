@@ -1,16 +1,18 @@
 import React, { useEffect, useRef } from 'react';
-import type { PageData } from '../loaders/types';
+import type { PageData, WordBox } from '../loaders/types';
 import { textWordOrdinal, wrapWords } from '../loaders/highlight';
 
 interface PagePreviewProps {
   page: PageData;
   currentWordIndex: number;
   faded: boolean; // true during RSVP (dim background behind the floating word)
+  // Optional pre-computed union box for multi-word chunk highlighting (PDF).
+  chunkBox?: WordBox;
 }
 
 // Renders an EPUB (HTML) or PDF (image) page preview and draws a red highlight
 // on the current word, scrolling it into view.
-const PagePreview: React.FC<PagePreviewProps> = ({ page, currentWordIndex, faded }) => {
+const PagePreview: React.FC<PagePreviewProps> = ({ page, currentWordIndex, faded, chunkBox }) => {
   const htmlRef = useRef<HTMLDivElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
@@ -40,7 +42,9 @@ const PagePreview: React.FC<PagePreviewProps> = ({ page, currentWordIndex, faded
 
   // PDF: image + percentage-positioned red box overlay.
   if (page.previewImage) {
-    const box = page.wordBoxes?.[currentWordIndex];
+    // Use the pre-computed union box (multi-word chunk) when provided,
+    // otherwise fall back to the single-word box.
+    const box: WordBox | undefined = chunkBox ?? page.wordBoxes?.[currentWordIndex];
     const iw = page.imageWidth ?? 1;
     const ih = page.imageHeight ?? 1;
     return (

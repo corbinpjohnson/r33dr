@@ -28,7 +28,7 @@ export function buildTokenMeta(
       clause: /[;:—]$/.test(tok),
       longWord: tok.length > 10,
       numeric: /^\d/.test(tok) || /^[A-Z]{2,}$/.test(t),
-      functionWord: FUNCTION_WORDS.has(tok.toLowerCase()),
+      functionWord: isFunctionWord(tok),
     };
   });
 }
