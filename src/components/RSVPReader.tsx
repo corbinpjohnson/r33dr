@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { Play, Pause, FastForward, Rewind, AlertCircle, Eye, SkipBack, SkipForward, Bookmark } from 'lucide-react';
+import { Play, Pause, FastForward, Rewind, AlertCircle, Eye, SkipBack, SkipForward, Bookmark, EyeOff } from 'lucide-react';
 import { loadEpub } from '../loaders/epub';
 import { loadPdf } from '../loaders/pdf';
 import { ocrCanvas, releaseOcrWorker } from '../loaders/ocr';
@@ -17,6 +17,7 @@ import {
   makeDebounced,
   type Bookmark as BookmarkEntry,
 } from '../lib/persistence';
+import { makeSessionStats, statsWithWord, formatTime, type SessionStats } from '../lib/stats';
 
 interface RSVPReaderProps {
   file: ArrayBuffer;
@@ -49,10 +50,14 @@ const RSVPReader: React.FC<RSVPReaderProps> = ({ file }) => {
   const [resumeToast, setResumeToast] = useState<string | null>(null);
   const [bookmarks, setBookmarks] = useState<BookmarkEntry[]>([]);
   const [stripCollapsed, setStripCollapsed] = useState(false);
+  const [isPeeking, setIsPeeking] = useState(false);
+  const [sessionStats, setSessionStats] = useState<SessionStats>(makeSessionStats());
 
   const urlRegistryRef = useRef<string[]>([]);
   const docHashRef = useRef<string | null>(null);
   const pauseStartRef = useRef<number | null>(null);
+  const lastWordTickRef = useRef<number>(performance.now());
+  const lastPageIndexRef = useRef<number>(0);
 
   const addLog = useCallback((msg: string) => {
     console.log(msg);
@@ -228,6 +233,15 @@ const RSVPReader: React.FC<RSVPReaderProps> = ({ file }) => {
   const handleAdvance = useCallback((nextIndex: number) => {
     const page = pages[currentPageIndex];
     if (!page) return;
+
+    // Accumulate stats for the word just shown.
+    const now = performance.now();
+    const durationMs = now - lastWordTickRef.current;
+    lastWordTickRef.current = now;
+    const isNewPage = currentPageIndex !== lastPageIndexRef.current;
+    lastPageIndexRef.current = currentPageIndex;
+    setSessionStats(prev => statsWithWord(prev, durationMs, isNewPage));
+
     if (nextIndex >= page.tokens.length) {
       if (currentPageIndex < pages.length - 1) {
         setCurrentPageIndex(prev => prev + 1);
@@ -320,10 +334,22 @@ const RSVPReader: React.FC<RSVPReaderProps> = ({ file }) => {
       } else if (e.code === 'KeyB') {
         e.preventDefault();
         addBookmark();
+      } else if (e.code === 'ArrowDown' && readerState === 'RSVP') {
+        e.preventDefault();
+        setIsPeeking(true);
+        setIsPlaying(false);
+      }
+    };
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.code === 'ArrowDown' && isPeeking) {
+        setIsPeeking(false);
+        // Resume with regression (same as a normal resume after pause).
+        setIsPlaying(true);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => { window.removeEventListener('keydown', handleKeyDown); window.removeEventListener('keyup', handleKeyUp); };
   }, [togglePlay, readerState, goToPage, currentPageIndex, addBookmark]);
 
   // ─── Derived render values ────────────────────────────────────────────────
@@ -419,7 +445,7 @@ const RSVPReader: React.FC<RSVPReaderProps> = ({ file }) => {
 
         {readerState === 'PREVIEW' && (
           <div className="absolute inset-0 flex flex-col animate-in fade-in duration-500">
-            <PagePreview page={currentPage} currentWordIndex={currentWordIndex} chunkBox={chunkBox} faded={false} />
+            <PagePreview page={currentPage} currentWordIndex={currentWordIndex} chunkBox={chunkBox} faded={false} peeking={false} />
             <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-transparent pointer-events-none" />
             <div className="absolute bottom-8 left-1/2 -translate-x-1/2">
               <div className="px-4 py-2 bg-indigo-500 text-white rounded-full font-black text-sm shadow-xl flex items-center gap-2">
@@ -434,7 +460,7 @@ const RSVPReader: React.FC<RSVPReaderProps> = ({ file }) => {
           <div className={`absolute inset-0 flex flex-col transition-all duration-500 ${isPeripheralMode ? 'bg-black' : 'bg-slate-900'}`}>
             {!isPeripheralMode && (
               <div className="absolute inset-0 flex flex-col">
-                <PagePreview page={currentPage} currentWordIndex={currentWordIndex} chunkBox={chunkBox} faded={true} />
+                <PagePreview page={currentPage} currentWordIndex={currentWordIndex} chunkBox={chunkBox} faded={!isPeeking} peeking={isPeeking} />
               </div>
             )}
             <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
@@ -500,6 +526,16 @@ const RSVPReader: React.FC<RSVPReaderProps> = ({ file }) => {
           <ToggleButton active={isRegressionEnabled} onClick={() => setIsRegressionEnabled(!isRegressionEnabled)} label="Auto Rewind" sub="Re-context on resume." />
           <ToggleButton active={isPeripheralMode} onClick={() => setIsPeripheralMode(!isPeripheralMode)} label="Focus Lockdown" sub="Remove page context." />
           <ToggleButton active={isTrainerMode} onClick={() => setIsTrainerMode(!isTrainerMode)} label="Trainer" sub="Auto-nudge WPM up." />
+          <button
+            onPointerDown={() => { setIsPeeking(true); setIsPlaying(false); }}
+            onPointerUp={() => { setIsPeeking(false); setIsPlaying(true); }}
+            onPointerLeave={() => { if (isPeeking) { setIsPeeking(false); setIsPlaying(true); } }}
+            className="flex flex-col items-start p-5 rounded-2xl border-2 border-transparent hover:border-slate-700 bg-slate-800/30 transition-all select-none touch-none"
+            title="Hold to peek at page (↓)"
+          >
+            <span className="text-xs font-black uppercase tracking-widest text-slate-500 flex items-center gap-1.5"><EyeOff size={12} /> Peek</span>
+            <p className="text-[11px] text-slate-500 mt-1">Hold to unfade page</p>
+          </button>
           <button onClick={addBookmark} title="Bookmark (B)" className="flex flex-col items-start p-5 rounded-2xl border-2 border-transparent hover:border-slate-700 bg-slate-800/30 transition-all">
             <span className="text-xs font-black uppercase tracking-widest text-slate-500 flex items-center gap-1.5"><Bookmark size={12} /> Bookmark</span>
             <p className="text-[11px] text-slate-500 mt-1">{bookmarks.length} saved</p>
@@ -528,6 +564,16 @@ const RSVPReader: React.FC<RSVPReaderProps> = ({ file }) => {
           <div className="h-4 w-full bg-slate-800/50 rounded-full p-1 border border-slate-700/50 shadow-inner">
             <div className="h-full bg-gradient-to-r from-indigo-600 to-indigo-400 rounded-full transition-all duration-1000 ease-out shadow-[0_0_15px_rgba(99,102,241,0.5)]" style={{ width: `${progressPct}%` }}></div>
           </div>
+
+          {/* Session stats row (F10) */}
+          {sessionStats.wordsShown > 0 && (
+            <div className="flex justify-between pt-2 border-t border-slate-800/30">
+              <StatChip label="Words" value={sessionStats.wordsShown.toLocaleString()} />
+              <StatChip label="Active" value={formatTime(sessionStats.activeMs)} />
+              <StatChip label="Eff. WPM" value={String(sessionStats.effectiveWpm)} />
+              <StatChip label="Pages" value={String(sessionStats.pagesRead)} />
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -539,6 +585,13 @@ const ToggleButton: React.FC<{ active: boolean; onClick: () => void; label: stri
     <span className={`text-xs font-black uppercase tracking-widest ${active ? 'text-indigo-400' : 'text-slate-500'}`}>{label}</span>
     <p className="text-[11px] text-slate-500 mt-1">{sub}</p>
   </button>
+);
+
+const StatChip: React.FC<{ label: string; value: string }> = ({ label, value }) => (
+  <div className="flex flex-col items-center gap-0.5">
+    <span className="text-[9px] font-black text-slate-600 uppercase tracking-widest">{label}</span>
+    <span className="text-sm font-mono font-bold text-slate-400">{value}</span>
+  </div>
 );
 
 export default RSVPReader;

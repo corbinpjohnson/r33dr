@@ -49,6 +49,22 @@ export function sentenceStartBefore(tokens: string[], index: number): number {
   return 0;
 }
 
+// Return the [start, end] inclusive token indices of the sentence containing
+// `index`. Used by the sentence-trace overlay to highlight the full sentence.
+export function sentenceRangeAt(tokens: string[], index: number): [number, number] {
+  // Find start: walk back to the first word after the previous sentence end.
+  let start = 0;
+  for (let i = index - 1; i >= 0; i--) {
+    if (/[.!?]['"]?$/.test(tokens[i])) { start = i + 1; break; }
+  }
+  // Find end: walk forward to the next sentence-ending word.
+  let end = tokens.length - 1;
+  for (let i = index; i < tokens.length; i++) {
+    if (/[.!?]['"]?$/.test(tokens[i])) { end = i; break; }
+  }
+  return [start, end];
+}
+
 // ─── De-hyphenation ──────────────────────────────────────────────────────────
 
 export interface TextAndBoxes {
