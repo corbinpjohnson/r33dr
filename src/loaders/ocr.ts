@@ -14,6 +14,8 @@ export interface OcrResult {
   boxes: WordBox[];
 }
 
+const DEFAULT_OCR_TIMEOUT_MS = 45_000;
+
 let workerPromise: Promise<TesseractWorker> | null = null;
 
 // Resolve a bundled asset path against the document base so it works both under
@@ -36,25 +38,67 @@ async function getWorker(addLog: LoadLogger): Promise<TesseractWorker> {
   return workerPromise;
 }
 
+// Tear down the OCR worker (wasm + model hold tens of MB). Called after a
+// document finishes loading, and to kill a stuck recognition — recognize()
+// cannot be interrupted any other way.
+export async function releaseOcrWorker(): Promise<void> {
+  const pending = workerPromise;
+  workerPromise = null;
+  if (pending) {
+    try {
+      await (await pending).terminate();
+    } catch {
+      // Worker failed to initialize or is already gone — nothing to release.
+    }
+  }
+}
+
 export async function ocrCanvas(
   canvas: HTMLCanvasElement,
   addLog: LoadLogger,
+  signal?: AbortSignal,
+  timeoutMs: number = DEFAULT_OCR_TIMEOUT_MS,
 ): Promise<OcrResult> {
+  signal?.throwIfAborted();
   const worker = await getWorker(addLog);
-  const { data } = await worker.recognize(canvas);
-  const words = (data.words ?? []).filter((w) => w.text.trim().length > 0);
-  if (words.length > 0) {
-    return {
-      tokens: words.map((w) => w.text),
-      boxes: words.map((w) => ({
-        x: w.bbox.x0,
-        y: w.bbox.y0,
-        w: w.bbox.x1 - w.bbox.x0,
-        h: w.bbox.y1 - w.bbox.y0,
-      })),
-    };
+
+  let timer: number | undefined;
+  let onAbort: (() => void) | undefined;
+  const interrupt = new Promise<never>((_, reject) => {
+    timer = window.setTimeout(
+      () => reject(new Error(`OCR timed out after ${Math.round(timeoutMs / 1000)}s.`)),
+      timeoutMs,
+    );
+    if (signal) {
+      onAbort = () => reject(new DOMException('OCR aborted', 'AbortError'));
+      signal.addEventListener('abort', onAbort, { once: true });
+    }
+  });
+
+  try {
+    const { data } = await Promise.race([worker.recognize(canvas), interrupt]);
+    const words = (data.words ?? []).filter((w) => w.text.trim().length > 0);
+    if (words.length > 0) {
+      return {
+        tokens: words.map((w) => w.text),
+        boxes: words.map((w) => ({
+          x: w.bbox.x0,
+          y: w.bbox.y0,
+          w: w.bbox.x1 - w.bbox.x0,
+          h: w.bbox.y1 - w.bbox.y0,
+        })),
+      };
+    }
+    // Fallback: no word boxes available — tokens only, no highlight boxes.
+    const tokens = data.text.replace(/\s+/g, ' ').trim().split(' ').filter((w) => w.length > 0);
+    return { tokens, boxes: [] };
+  } catch (err) {
+    // The recognition may still be running inside the worker; kill it so the
+    // next page gets a fresh worker instead of queueing behind a stuck one.
+    void releaseOcrWorker();
+    throw err;
+  } finally {
+    clearTimeout(timer);
+    if (signal && onAbort) signal.removeEventListener('abort', onAbort);
   }
-  // Fallback: no word boxes available — tokens only, no highlight boxes.
-  const tokens = data.text.replace(/\s+/g, ' ').trim().split(' ').filter((w) => w.length > 0);
-  return { tokens, boxes: [] };
 }

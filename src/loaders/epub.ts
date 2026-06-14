@@ -1,6 +1,6 @@
 import ePub from 'epubjs';
-import type { PageData, LoadLogger } from './types';
-import { IMG_PREFIX } from './types';
+import type { PageData, LoadLogger, LoadOptions } from './types';
+import { IMG_PREFIX, isAbortError } from './types';
 
 // Extracts reading-order tokens (and a preview HTML snapshot) from each spine
 // item of an EPUB. Image markers are inserted in document order; image srcs are
@@ -9,91 +9,135 @@ import { IMG_PREFIX } from './types';
 export async function loadEpub(
   file: ArrayBuffer,
   addLog: LoadLogger,
+  opts: LoadOptions = {},
 ): Promise<PageData[]> {
+  const { signal, onMeta, onPage, registerUrl } = opts;
   const book = ePub(file);
   await book.ready;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const anyBook = book as any;
   addLog(`Book: ${anyBook.package?.metadata?.title ?? 'Untitled'}`);
 
-  const collectedPages: PageData[] = [];
   const spine = anyBook.spine;
+  const totalPages = spine.length as number;
+  onMeta?.(totalPages);
 
-  for (let i = 0; i < spine.length; i++) {
+  const collectedPages: PageData[] = [];
+  let parsedOk = 0;
+
+  for (let i = 0; i < totalPages; i++) {
+    signal?.throwIfAborted();
     const item = spine.get(i);
     if (!item) continue;
 
-    addLog(`Scanning Page ${i + 1}/${spine.length}...`);
-    const contents = await book.load(item.href);
+    addLog(`Scanning Page ${i + 1}/${totalPages}...`);
 
-    // Always normalize through an HTML document so element names are uppercased
-    // and a <body> exists, regardless of whether epubjs returned a string or an
-    // XHTML Document (whose lowercase node names would otherwise be missed).
-    let rawHtml = '';
-    if (typeof contents === 'string') {
-      rawHtml = contents;
-    } else if (contents instanceof Document) {
-      rawHtml = contents.documentElement.outerHTML;
+    let pageData: PageData;
+    try {
+      pageData = await parseSpineItem(book, anyBook, item, i, totalPages, addLog, registerUrl, signal);
+      parsedOk++;
+    } catch (err) {
+      if (isAbortError(err)) throw err;
+      const message = err instanceof Error ? err.message : String(err);
+      addLog(`Page ${i + 1} failed: ${message}`);
+      pageData = { label: item.href ?? `Page ${i + 1}`, tokens: [], loadError: message };
     }
-    if (!rawHtml) continue;
-    const doc = new DOMParser().parseFromString(rawHtml, 'text/html');
 
-    const tokens: string[] = [];
-
-    // Resolve an <img>/<image> to an archive blob URL and rewrite it in place.
-    const resolveImage = async (el: Element): Promise<string | null> => {
-      const src = el.getAttribute('src') || el.getAttribute('xlink:href');
-      if (!src) return null;
-      try {
-        const absolutePath = anyBook.path.resolve(src, item.href);
-        const url: string = await book.archive.createUrl(absolutePath, {
-          base64: false,
-        });
-        el.setAttribute('src', url);
-        return url;
-      } catch {
-        return null;
-      }
-    };
-
-    // Sequential await (not forEach) so async image resolution preserves
-    // document order and the page isn't finalized before images resolve.
-    const traverse = async (node: Node): Promise<void> => {
-      if (['SCRIPT', 'STYLE', 'HEAD'].includes(node.nodeName)) return;
-
-      if (node.nodeType === Node.TEXT_NODE) {
-        const content = node.textContent?.trim();
-        if (content && content !== '[object Object]') {
-          tokens.push(...content.split(/\s+/).filter((w) => w.length > 0));
-        }
-        return;
-      }
-
-      if (node.nodeName === 'IMG' || node.nodeName === 'IMAGE') {
-        const url = await resolveImage(node as Element);
-        if (url) tokens.push(`${IMG_PREFIX}${url}`);
-        return;
-      }
-
-      for (const child of Array.from(node.childNodes)) {
-        await traverse(child);
-      }
-    };
-
-    const root = doc.body || doc.documentElement;
-    await traverse(root);
-
-    if (tokens.length > 0) {
-      collectedPages.push({
-        label: item.href,
-        tokens,
-        html: root.innerHTML,
-      });
-    }
+    collectedPages.push(pageData);
+    onPage?.(pageData, i);
   }
 
-  if (collectedPages.length === 0) {
+  if (parsedOk === 0) {
     throw new Error('No readable text found in any page.');
   }
   return collectedPages;
+}
+
+async function parseSpineItem(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  book: any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  anyBook: any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  item: any,
+  i: number,
+  totalPages: number,
+  addLog: LoadLogger,
+  registerUrl: LoadOptions['registerUrl'],
+  signal: AbortSignal | undefined,
+): Promise<PageData> {
+  const contents = await book.load(item.href);
+
+  // Always normalize through an HTML document so element names are uppercased
+  // and a <body> exists, regardless of whether epubjs returned a string or an
+  // XHTML Document (whose lowercase node names would otherwise be missed).
+  let rawHtml = '';
+  if (typeof contents === 'string') {
+    rawHtml = contents;
+  } else if (contents instanceof Document) {
+    rawHtml = contents.documentElement.outerHTML;
+  }
+  if (!rawHtml) {
+    return { label: item.href ?? `Page ${i + 1}`, tokens: [], loadError: 'Empty content' };
+  }
+  const doc = new DOMParser().parseFromString(rawHtml, 'text/html');
+  const tokens: string[] = [];
+
+  // Resolve an <img>/<image> to an archive blob URL and rewrite it in place.
+  const resolveImage = async (el: Element): Promise<string | null> => {
+    const src = el.getAttribute('src') || el.getAttribute('xlink:href');
+    if (!src) return null;
+    try {
+      const absolutePath = anyBook.path.resolve(src, item.href);
+      const url: string = await book.archive.createUrl(absolutePath, { base64: false });
+      el.setAttribute('src', url);
+      registerUrl?.(url);
+      return url;
+    } catch (err) {
+      addLog(`Page ${i + 1}: Image "${src}" could not be resolved — ${err instanceof Error ? err.message : err}`);
+      return null;
+    }
+  };
+
+  // Sequential await (not forEach) so async image resolution preserves
+  // document order and the page isn't finalized before images resolve.
+  const traverse = async (node: Node): Promise<void> => {
+    signal?.throwIfAborted();
+    if (['SCRIPT', 'STYLE', 'HEAD'].includes(node.nodeName)) return;
+
+    if (node.nodeType === Node.TEXT_NODE) {
+      const content = node.textContent?.trim();
+      if (content && content !== '[object Object]') {
+        tokens.push(...content.split(/\s+/).filter((w) => w.length > 0));
+      }
+      return;
+    }
+
+    if (node.nodeName === 'IMG' || node.nodeName === 'IMAGE') {
+      const url = await resolveImage(node as Element);
+      if (url) tokens.push(`${IMG_PREFIX}${url}`);
+      return;
+    }
+
+    for (const child of Array.from(node.childNodes)) {
+      await traverse(child);
+    }
+  };
+
+  const root = doc.body || doc.documentElement;
+  await traverse(root);
+
+  // Derive a human-readable label from the TOC if available.
+  const tocItem = anyBook.navigation?.toc?.find(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (t: any) => t.href && item.href && t.href.split('#')[0] === item.href.split('#')[0],
+  );
+  const label = tocItem?.label?.trim() || item.href || `Page ${i + 1}`;
+
+  const pageData: PageData = { label, tokens, html: root.innerHTML };
+
+  // Immediately stream the page even if tokens is empty (so the strip & page
+  // count are accurate for image-only spine items).
+  void totalPages; // suppress lint warning — used in the caller's log
+  return pageData;
 }

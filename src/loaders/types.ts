@@ -21,8 +21,28 @@ export interface PageData {
   wordBoxes?: WordBox[];
   imageWidth?: number;
   imageHeight?: number;
+  // Set when this single page failed to parse; the rest of the document is
+  // still readable. The document only hard-fails if every page failed.
+  loadError?: string;
 }
 
 export type LoadLogger = (msg: string) => void;
+
+// Streaming/cancellation hooks shared by the PDF and EPUB loaders.
+export interface LoadOptions {
+  // Abort parsing (e.g. a new file was chosen mid-load, or unmount).
+  signal?: AbortSignal;
+  // Called once the total page count is known, before any page is emitted.
+  onMeta?: (totalPages: number) => void;
+  // Called for each page as it finishes parsing, in document order.
+  onPage?: (page: PageData, index: number) => void;
+  // Called for every object URL a loader creates, so the caller can revoke
+  // them all when the document is discarded.
+  registerUrl?: (url: string) => void;
+}
+
+export function isAbortError(err: unknown): boolean {
+  return err instanceof DOMException && err.name === 'AbortError';
+}
 
 export const IMG_PREFIX = '__IMG__:';

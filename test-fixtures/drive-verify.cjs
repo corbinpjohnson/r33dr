@@ -2,7 +2,7 @@
 const { chromium } = require('playwright');
 const path = require('path');
 const FIX = __dirname;
-const BASE = 'http://localhost:5174/';
+const BASE = process.env.VR_BASE ?? 'http://localhost:5174/';
 
 async function upload(page, file) {
   await page.goto(BASE);
