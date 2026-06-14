@@ -1,6 +1,7 @@
 import ePub from 'epubjs';
 import type { PageData, LoadLogger, LoadOptions } from './types';
 import { IMG_PREFIX, isAbortError } from './types';
+import { buildTokenMeta } from './text';
 
 // Extracts reading-order tokens (and a preview HTML snapshot) from each spine
 // item of an EPUB. Image markers are inserted in document order; image srcs are
@@ -82,6 +83,11 @@ async function parseSpineItem(
   }
   const doc = new DOMParser().parseFromString(rawHtml, 'text/html');
   const tokens: string[] = [];
+  const paragraphBreaks = new Set<number>();
+  const headingIndices = new Set<number>();
+
+  const HEADING_TAGS = new Set(['H1', 'H2', 'H3', 'H4', 'H5', 'H6']);
+  const BLOCK_TAGS = new Set(['P', 'DIV', 'SECTION', 'ARTICLE', 'BLOCKQUOTE', 'LI']);
 
   // Resolve an <img>/<image> to an archive blob URL and rewrite it in place.
   const resolveImage = async (el: Element): Promise<string | null> => {
@@ -99,16 +105,36 @@ async function parseSpineItem(
     }
   };
 
+  // Returns true if any ancestor of node is a heading tag.
+  const isInsideHeading = (node: Node): boolean => {
+    let p = node.parentElement;
+    while (p) {
+      if (HEADING_TAGS.has(p.nodeName)) return true;
+      p = p.parentElement;
+    }
+    return false;
+  };
+
   // Sequential await (not forEach) so async image resolution preserves
   // document order and the page isn't finalized before images resolve.
   const traverse = async (node: Node): Promise<void> => {
     signal?.throwIfAborted();
     if (['SCRIPT', 'STYLE', 'HEAD'].includes(node.nodeName)) return;
 
+    // Mark a paragraph break at the index of the last token before this block.
+    if ((BLOCK_TAGS.has(node.nodeName) || HEADING_TAGS.has(node.nodeName)) && tokens.length > 0) {
+      paragraphBreaks.add(tokens.length - 1);
+    }
+
     if (node.nodeType === Node.TEXT_NODE) {
       const content = node.textContent?.trim();
       if (content && content !== '[object Object]') {
-        tokens.push(...content.split(/\s+/).filter((w) => w.length > 0));
+        const words = content.split(/\s+/).filter((w) => w.length > 0);
+        const inHeading = isInsideHeading(node);
+        for (const w of words) {
+          if (inHeading) headingIndices.add(tokens.length);
+          tokens.push(w);
+        }
       }
       return;
     }
@@ -134,10 +160,11 @@ async function parseSpineItem(
   );
   const label = tocItem?.label?.trim() || item.href || `Page ${i + 1}`;
 
-  const pageData: PageData = { label, tokens, html: root.innerHTML };
-
-  // Immediately stream the page even if tokens is empty (so the strip & page
-  // count are accurate for image-only spine items).
   void totalPages; // suppress lint warning — used in the caller's log
-  return pageData;
+  return {
+    label,
+    tokens,
+    html: root.innerHTML,
+    tokenMeta: buildTokenMeta(tokens, { paragraphBreaks, headingIndices }),
+  };
 }

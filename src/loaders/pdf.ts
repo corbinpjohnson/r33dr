@@ -3,6 +3,7 @@ import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import type { PageData, LoadLogger, LoadOptions, WordBox } from './types';
 import { isAbortError } from './types';
 import { splitRunIntoBoxes } from './highlight';
+import { validateAlignment, dehyphenate, buildTokenMeta } from './text';
 import type { OcrResult } from './ocr';
 
 // pdf.js runs its parser in a Web Worker; Vite resolves the worker asset URL.
@@ -79,13 +80,24 @@ async function parsePage(
     }
   }
 
+  // Merge line-end soft hyphens ("soft-" + "ware" → "software").
+  const dehy = dehyphenate(tokens, boxes);
+  tokens = dehy.tokens;
+  boxes = dehy.boxes.map(b => b ?? boxes[0]).filter(Boolean) as WordBox[];
+
+  // Repair any token/box length mismatch rather than silently disabling
+  // highlights for the entire page.
+  const label = `Page ${i}`;
+  const repairedBoxes = validateAlignment(tokens, boxes, label, addLog);
+
   return {
-    label: `Page ${i}`,
+    label,
     tokens,
     previewImage: url,
-    wordBoxes: boxes.length === tokens.length ? boxes : undefined,
+    wordBoxes: repairedBoxes,
     imageWidth: canvas.width,
     imageHeight: canvas.height,
+    tokenMeta: buildTokenMeta(tokens),
   };
 }
 

@@ -24,6 +24,9 @@ export interface PageData {
   // Set when this single page failed to parse; the rest of the document is
   // still readable. The document only hard-fails if every page failed.
   loadError?: string;
+  // Precomputed per-token metadata for pacing decisions (speed factors, skim
+  // mode, sentence boundaries). Absent means fall back to regex on each tick.
+  tokenMeta?: import('./text').TokenMeta[];
 }
 
 export type LoadLogger = (msg: string) => void;

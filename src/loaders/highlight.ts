@@ -1,5 +1,39 @@
 import { IMG_PREFIX, type WordBox } from './types';
 
+// Return a single WordBox that is the union (bounding rect) of the given boxes.
+export function unionBoxes(boxes: WordBox[]): WordBox {
+  if (boxes.length === 0) return { x: 0, y: 0, w: 0, h: 0 };
+  let minX = boxes[0].x, minY = boxes[0].y;
+  let maxX = boxes[0].x + boxes[0].w, maxY = boxes[0].y + boxes[0].h;
+  for (const b of boxes) {
+    if (b.x < minX) minX = b.x;
+    if (b.y < minY) minY = b.y;
+    if (b.x + b.w > maxX) maxX = b.x + b.w;
+    if (b.y + b.h > maxY) maxY = b.y + b.h;
+  }
+  return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+}
+
+// Cluster a list of word boxes into visual lines by grouping boxes whose
+// vertical centres are within `lineGap` pixels of each other.  Returns one
+// union box per line — used to render the sentence-trace underline.
+export function groupBoxesIntoLines(boxes: WordBox[], lineGap = 8): WordBox[] {
+  if (boxes.length === 0) return [];
+  const sorted = [...boxes].sort((a, b) => a.y - b.y || a.x - b.x);
+  const lines: WordBox[][] = [[sorted[0]]];
+  for (let i = 1; i < sorted.length; i++) {
+    const prev = lines[lines.length - 1];
+    const prevMid = prev[0].y + prev[0].h / 2;
+    const curMid = sorted[i].y + sorted[i].h / 2;
+    if (Math.abs(curMid - prevMid) <= lineGap) {
+      prev.push(sorted[i]);
+    } else {
+      lines.push([sorted[i]]);
+    }
+  }
+  return lines.map(unionBoxes);
+}
+
 // Map a token index (which may include __IMG__ markers) to its ordinal among
 // text words only. Returns -1 if the token at `index` is itself an image marker.
 export function textWordOrdinal(tokens: string[], index: number): number {
