@@ -1,10 +1,19 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Play, Pause, FastForward, Rewind, AlertCircle, Eye, SkipBack, SkipForward } from 'lucide-react';
+import { Play, Pause, FastForward, Rewind, AlertCircle, Eye, SkipBack, SkipForward, Bookmark } from 'lucide-react';
 import { loadEpub } from '../loaders/epub';
 import { loadPdf } from '../loaders/pdf';
 import { ocrCanvas, releaseOcrWorker } from '../loaders/ocr';
 import { IMG_PREFIX, type PageData } from '../loaders/types';
 import PagePreview from './PagePreview';
+import ThumbnailStrip from './ThumbnailStrip';
+import {
+  hashDocument,
+  loadDocState,
+  saveDocState,
+  loadGlobalSettings,
+  makeDebounced,
+  type Bookmark as BookmarkEntry,
+} from '../lib/persistence';
 
 interface RSVPReaderProps {
   file: ArrayBuffer;
@@ -31,23 +40,35 @@ const RSVPReader: React.FC<RSVPReaderProps> = ({ file }) => {
   const [error, setError] = useState<string | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
   const [previewCountdown, setPreviewCountdown] = useState(3);
+  const [resumeToast, setResumeToast] = useState<string | null>(null);
+  const [bookmarks, setBookmarks] = useState<BookmarkEntry[]>([]);
+  const [stripCollapsed, setStripCollapsed] = useState(false);
 
   const timerRef = useRef<number | null>(null);
-  // Object URLs created by the loaders; revoke all when a new file is loaded.
   const urlRegistryRef = useRef<string[]>([]);
+  const docHashRef = useRef<string | null>(null);
 
   const addLog = useCallback((msg: string) => {
     console.log(msg);
     setLogs(prev => [...prev.slice(-10), msg]);
   }, []);
 
+  // Debounced persistence save — fires at most once per second while reading.
+  const debouncedSave = useRef(
+    makeDebounced((hash: string, state: Parameters<typeof saveDocState>[1]) => {
+      saveDocState(hash, state);
+    }, 1000),
+  ).current;
+
+  // ─── Load effect ──────────────────────────────────────────────────────────
+
   useEffect(() => {
     const controller = new AbortController();
     const signal = controller.signal;
 
-    // Revoke all previously created object URLs before starting a new load.
     for (const url of urlRegistryRef.current) URL.revokeObjectURL(url);
     urlRegistryRef.current = [];
+    docHashRef.current = null;
 
     const registerUrl = (url: string) => urlRegistryRef.current.push(url);
 
@@ -59,21 +80,21 @@ const RSVPReader: React.FC<RSVPReaderProps> = ({ file }) => {
       setTotalPageCount(0);
       setCurrentPageIndex(0);
       setCurrentWordIndex(0);
+      setBookmarks([]);
+      setResumeToast(null);
       addLog('--- Continuous Page Deep Scan ---');
 
-      // Called when the loader knows the total count (before any page arrives).
+      // Compute doc hash and load saved state in parallel with the file parse
+      // (hash is fast — completes well before the first page finishes).
+      const hashPromise = hashDocument(file);
+
       const onMeta = (total: number) => {
         setTotalPageCount(total);
       };
 
-      // Stream pages: flip to PREVIEW as soon as the first page lands.
       let firstPage = true;
-      const onPage = (page: PageData, index: number) => {
-        void page; void index;
-        setPages(prev => {
-          const next = [...prev, page];
-          return next;
-        });
+      const onPage = (page: PageData) => {
+        setPages(prev => [...prev, page]);
         if (firstPage) {
           firstPage = false;
           setReaderState('PREVIEW');
@@ -88,21 +109,33 @@ const RSVPReader: React.FC<RSVPReaderProps> = ({ file }) => {
           : await loadEpub(file, addLog, opts);
 
         if (!signal.aborted) {
-          // Replace the incrementally-built pages with the finalized array
-          // (same content, but ensures the reference is stable).
           setPages(allPages);
           setTotalPageCount(allPages.length);
-          if (firstPage) {
-            // No streaming happened (e.g. the loader collected all at once).
-            setReaderState('PREVIEW');
-          }
+          if (firstPage) setReaderState('PREVIEW');
           addLog(`Scan complete. ${allPages.length} pages ready.`);
-          // Release the OCR worker now that loading is done; it holds tens of
-          // MB of wasm + model that aren't needed during playback.
           void releaseOcrWorker();
+
+          // Restore saved position now that we have the full doc.
+          const hash = await hashPromise;
+          docHashRef.current = hash;
+          const saved = loadDocState(hash);
+          if (saved && saved.page < allPages.length) {
+            setCurrentPageIndex(saved.page);
+            setCurrentWordIndex(saved.word);
+            setWpm(saved.wpm);
+            setIsDynamicSpeed(saved.dynamicSpeed);
+            setBookmarks(saved.bookmarks ?? []);
+            setResumeToast(`Resumed at page ${saved.page + 1}`);
+            setTimeout(() => setResumeToast(null), 3000);
+          } else {
+            // First load — persist global default settings.
+            const gs = loadGlobalSettings();
+            setWpm(gs.wpm);
+            setIsDynamicSpeed(gs.dynamicSpeed);
+          }
         }
       } catch (err) {
-        if (signal.aborted) return; // a new file was chosen; ignore
+        if (signal.aborted) return;
         const message = err instanceof Error ? err.message : String(err);
         addLog(`Fatal Error: ${message}`);
         setError(message);
@@ -111,14 +144,28 @@ const RSVPReader: React.FC<RSVPReaderProps> = ({ file }) => {
     };
 
     if (file) load();
-
-    return () => {
-      // Abort any in-flight load (new file chosen, unmount, StrictMode re-run).
-      controller.abort();
-    };
+    return () => { controller.abort(); };
   }, [file, addLog]);
 
-  // Handle Preview Phase
+  // ─── Persist reading position (debounced) ─────────────────────────────────
+
+  useEffect(() => {
+    const hash = docHashRef.current;
+    if (!hash || readerState === 'LOADING' || readerState === 'ERROR') return;
+    debouncedSave(hash, {
+      page: currentPageIndex,
+      word: currentWordIndex,
+      wpm,
+      dynamicSpeed: isDynamicSpeed,
+      skimMode: false,
+      chunkSize: 0,
+      trainer: false,
+      bookmarks,
+    });
+  }, [currentPageIndex, currentWordIndex, wpm, isDynamicSpeed, bookmarks, readerState, debouncedSave]);
+
+  // ─── Preview countdown ────────────────────────────────────────────────────
+
   useEffect(() => {
     if (readerState === 'PREVIEW' && isPlaying) {
       setPreviewCountdown(3);
@@ -136,13 +183,13 @@ const RSVPReader: React.FC<RSVPReaderProps> = ({ file }) => {
     }
   }, [readerState, isPlaying]);
 
-  // Handle RSVP Phase
+  // ─── RSVP word advance ────────────────────────────────────────────────────
+
   useEffect(() => {
     if (readerState === 'RSVP' && isPlaying) {
       const currentPage = pages[currentPageIndex];
       if (!currentPage) return;
 
-      // Skip error/empty pages automatically during playback.
       if (currentPage.tokens.length === 0) {
         if (currentPageIndex < pages.length - 1) {
           setCurrentPageIndex(prev => prev + 1);
@@ -155,7 +202,6 @@ const RSVPReader: React.FC<RSVPReaderProps> = ({ file }) => {
       }
 
       if (currentWordIndex >= currentPage.tokens.length) {
-        // End of page — move to next preview
         if (currentPageIndex < pages.length - 1) {
           setCurrentPageIndex(prev => prev + 1);
           setCurrentWordIndex(0);
@@ -168,7 +214,6 @@ const RSVPReader: React.FC<RSVPReaderProps> = ({ file }) => {
 
       const currentWord = currentPage.tokens[currentWordIndex];
 
-      // Image Intercept
       if (currentWord.startsWith(IMG_PREFIX)) {
         setReaderState('IMAGE_INTERCEPT');
         setIsPlaying(false);
@@ -191,6 +236,8 @@ const RSVPReader: React.FC<RSVPReaderProps> = ({ file }) => {
     }
   }, [readerState, isPlaying, currentWordIndex, currentPageIndex, pages, wpm, isDynamicSpeed]);
 
+  // ─── Controls ─────────────────────────────────────────────────────────────
+
   const togglePlay = useCallback(() => {
     setIsPlaying(prev => !prev);
   }, []);
@@ -203,6 +250,16 @@ const RSVPReader: React.FC<RSVPReaderProps> = ({ file }) => {
     setCurrentWordIndex(0);
     setReaderState('PREVIEW');
   }, [pages.length]);
+
+  const addBookmark = useCallback(() => {
+    setBookmarks(prev => {
+      const already = prev.find(b => b.page === currentPageIndex && b.word === currentWordIndex);
+      if (already) return prev; // don't duplicate
+      return [...prev, { page: currentPageIndex, word: currentWordIndex }];
+    });
+  }, [currentPageIndex, currentWordIndex]);
+
+  // ─── Keyboard ─────────────────────────────────────────────────────────────
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -221,11 +278,16 @@ const RSVPReader: React.FC<RSVPReaderProps> = ({ file }) => {
       } else if (e.code === 'ArrowLeft') {
         e.preventDefault();
         goToPage(currentPageIndex - 1);
+      } else if (e.code === 'KeyB') {
+        e.preventDefault();
+        addBookmark();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [togglePlay, readerState, goToPage, currentPageIndex]);
+  }, [togglePlay, readerState, goToPage, currentPageIndex, addBookmark]);
+
+  // ─── Derived ──────────────────────────────────────────────────────────────
 
   if (readerState === 'LOADING') {
     return (
@@ -267,20 +329,27 @@ const RSVPReader: React.FC<RSVPReaderProps> = ({ file }) => {
   const focus = currentWord[orpIndex] || '';
   const suffix = currentWord.substring(orpIndex + 1);
 
-  // Display count uses totalPageCount once known (streaming), falling back to
-  // the pages array length for backward compatibility.
   const displayTotal = totalPageCount || pages.length;
   const withinPage = currentPage ? currentWordIndex / Math.max(1, currentPage.tokens.length) : 0;
   const progressPct = displayTotal
     ? Math.min(100, Math.round(((currentPageIndex + withinPage) / displayTotal) * 100))
     : 0;
 
-  return (
-    <div className="space-y-8 w-full mx-auto">
-      {/* Dynamic Display Area */}
-      <div className={`relative h-[clamp(420px,70vh,1100px)] bg-slate-950 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl transition-all duration-500`}>
+  const bookmarkedPages = new Set(bookmarks.map(b => b.page));
 
-        {/* State 1: Full Page Preview */}
+  return (
+    <div className="space-y-4 w-full mx-auto">
+      {/* Resume toast */}
+      {resumeToast && (
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 px-5 py-2.5 bg-indigo-600 text-white text-sm font-bold rounded-full shadow-xl animate-in fade-in slide-in-from-top-2 duration-300">
+          {resumeToast}
+        </div>
+      )}
+
+      {/* Dynamic Display Area */}
+      <div className="relative h-[clamp(420px,70vh,1100px)] bg-slate-950 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl transition-all duration-500">
+
+        {/* PREVIEW */}
         {readerState === 'PREVIEW' && (
           <div className="absolute inset-0 flex flex-col animate-in fade-in duration-500">
             <PagePreview page={currentPage} currentWordIndex={currentWordIndex} faded={false} />
@@ -294,7 +363,7 @@ const RSVPReader: React.FC<RSVPReaderProps> = ({ file }) => {
           </div>
         )}
 
-        {/* State 2: RSVP Speed Reading — focus word floats over the faded page */}
+        {/* RSVP */}
         {readerState === 'RSVP' && (
           <div className={`absolute inset-0 flex flex-col transition-all duration-500 ${isPeripheralMode ? 'bg-black' : 'bg-slate-900'}`}>
             {!isPeripheralMode && (
@@ -313,7 +382,7 @@ const RSVPReader: React.FC<RSVPReaderProps> = ({ file }) => {
           </div>
         )}
 
-        {/* State 3: Image Intercept */}
+        {/* IMAGE_INTERCEPT */}
         {readerState === 'IMAGE_INTERCEPT' && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-8 p-12 bg-slate-900 animate-in zoom-in duration-300">
             <img src={currentWord.slice(IMG_PREFIX.length)} className="max-h-[350px] rounded-2xl shadow-2xl border border-slate-700" alt="Illustration" />
@@ -327,7 +396,17 @@ const RSVPReader: React.FC<RSVPReaderProps> = ({ file }) => {
         )}
       </div>
 
-      {/* Persistent Controls */}
+      {/* Thumbnail strip (F7) */}
+      <ThumbnailStrip
+        pages={pages}
+        currentIndex={currentPageIndex}
+        bookmarkedPages={bookmarkedPages}
+        onNavigate={goToPage}
+        collapsed={stripCollapsed}
+        onToggleCollapse={() => setStripCollapsed(c => !c)}
+      />
+
+      {/* Controls */}
       <div className="bg-slate-900/80 backdrop-blur-xl border border-slate-800 rounded-3xl p-8 space-y-8 shadow-2xl">
         <div className="flex items-center justify-between gap-12">
           <div className="flex items-center gap-4">
@@ -349,14 +428,20 @@ const RSVPReader: React.FC<RSVPReaderProps> = ({ file }) => {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-6">
-          <button onClick={() => setIsDynamicSpeed(!isDynamicSpeed)} className={`flex flex-col items-start p-6 rounded-2xl border-2 transition-all ${isDynamicSpeed ? 'bg-indigo-500/10 border-indigo-500/50' : 'bg-slate-800/30 border-transparent hover:border-slate-700'}`}>
+        <div className="grid grid-cols-3 gap-4">
+          <button onClick={() => setIsDynamicSpeed(!isDynamicSpeed)} className={`flex flex-col items-start p-5 rounded-2xl border-2 transition-all ${isDynamicSpeed ? 'bg-indigo-500/10 border-indigo-500/50' : 'bg-slate-800/30 border-transparent hover:border-slate-700'}`}>
             <span className={`text-xs font-black uppercase tracking-widest ${isDynamicSpeed ? 'text-indigo-400' : 'text-slate-500'}`}>Adaptive Cadence</span>
-            <p className="text-[11px] text-slate-500 mt-1">Slowing for syntax complexity.</p>
+            <p className="text-[11px] text-slate-500 mt-1">Slows for syntax.</p>
           </button>
-          <button onClick={() => setIsPeripheralMode(!isPeripheralMode)} className={`flex flex-col items-start p-6 rounded-2xl border-2 transition-all ${isPeripheralMode ? 'bg-indigo-500/10 border-indigo-500/50' : 'bg-slate-800/30 border-transparent hover:border-slate-700'}`}>
+          <button onClick={() => setIsPeripheralMode(!isPeripheralMode)} className={`flex flex-col items-start p-5 rounded-2xl border-2 transition-all ${isPeripheralMode ? 'bg-indigo-500/10 border-indigo-500/50' : 'bg-slate-800/30 border-transparent hover:border-slate-700'}`}>
             <span className={`text-xs font-black uppercase tracking-widest ${isPeripheralMode ? 'text-indigo-400' : 'text-slate-500'}`}>Focus Lockdown</span>
-            <p className="text-[11px] text-slate-500 mt-1">Peripheral sensory deprivation.</p>
+            <p className="text-[11px] text-slate-500 mt-1">Remove page context.</p>
+          </button>
+          <button onClick={addBookmark} title="Bookmark current position (B)" className="flex flex-col items-start p-5 rounded-2xl border-2 border-transparent hover:border-slate-700 bg-slate-800/30 transition-all">
+            <span className="text-xs font-black uppercase tracking-widest text-slate-500 flex items-center gap-1.5">
+              <Bookmark size={12} /> Bookmark
+            </span>
+            <p className="text-[11px] text-slate-500 mt-1">{bookmarks.length} saved</p>
           </button>
         </div>
 
