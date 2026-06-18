@@ -2,6 +2,8 @@
 
 # r33dr
 
+*(pronounced "reader")*
+
 A desktop **speed-reading app** for your own EPUB and PDF books. Open a book, then read it word-by-word with **RSVP** (Rapid Serial Visual Presentation) at whatever pace you can handle — with OCR for scanned PDFs and optional on-device AI chapter summaries.
 
 Everything runs locally. Your books never leave your machine.
