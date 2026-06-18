@@ -1,5 +1,13 @@
-// Preload script to bridge Electron and React
-// Currently empty but required for modern security patterns
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
+
+contextBridge.exposeInMainWorld('electronAPI', {
+  readFile: (filePath) => ipcRenderer.invoke('read-file', filePath),
+  summarizeChapter: (text, chapterTitle) => ipcRenderer.invoke('summarize-chapter', { text, chapterTitle }),
+  readNotes: (notesPath) => ipcRenderer.invoke('read-notes', notesPath),
+  writeNotes: (notesPath, content) => ipcRenderer.invoke('write-notes', { notesPath, content }),
+  getPathForFile: (file) => webUtils.getPathForFile(file),
+});
+
 window.addEventListener('DOMContentLoaded', () => {
-    console.log('VibeReader Preload Initialized');
+  console.log('VibeReader Preload Initialized');
 });

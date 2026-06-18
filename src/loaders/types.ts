@@ -27,6 +27,9 @@ export interface PageData {
   // Precomputed per-token metadata for pacing decisions (speed factors, skim
   // mode, sentence boundaries). Absent means fall back to regex on each tick.
   tokenMeta?: import('./text').TokenMeta[];
+  // Chapter this page belongs to (EPUB only — derived from TOC).
+  chapterLabel?: string;
+  chapterIndex?: number;
 }
 
 export type LoadLogger = (msg: string) => void;

@@ -102,6 +102,38 @@ export function saveGlobalSettings(s: Omit<GlobalSettings, 'v'>): void {
 
 // ─── Debounce helper ─────────────────────────────────────────────────────────
 
+// ─── Recent files ────────────────────────────────────────────────────────────
+
+export interface RecentEntry {
+  name: string;
+  hash: string;
+  page: number;
+  totalPages: number;
+  updatedAt: number;
+  filePath?: string; // native path, only available in Electron
+}
+
+const RECENTS_KEY = 'vibereader:recents';
+const MAX_RECENTS = 6;
+
+export function loadRecents(): RecentEntry[] {
+  try {
+    const raw = localStorage.getItem(RECENTS_KEY);
+    return raw ? (JSON.parse(raw) as RecentEntry[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function pushRecent(entry: RecentEntry): void {
+  try {
+    const prev = loadRecents().filter(r => r.hash !== entry.hash);
+    localStorage.setItem(RECENTS_KEY, JSON.stringify([entry, ...prev].slice(0, MAX_RECENTS)));
+  } catch {}
+}
+
+// ─── Debounce helper ─────────────────────────────────────────────────────────
+
 export function makeDebounced<T extends unknown[]>(
   fn: (...args: T) => void,
   delayMs: number,

@@ -26,12 +26,36 @@ export async function loadEpub(
   const collectedPages: PageData[] = [];
   let parsedOk = 0;
 
+  // Chapter tracking — carry forward the last seen TOC label so every page
+  // knows which chapter it belongs to, not just chapter-start pages.
+  let currentChapterLabel = '';
+  let currentChapterIndex = -1;
+  const seenChapters = new Map<string, number>();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const toc: any[] = anyBook.navigation?.toc ?? [];
+
   for (let i = 0; i < totalPages; i++) {
     signal?.throwIfAborted();
     const item = spine.get(i);
     if (!item) continue;
 
     addLog(`Scanning Page ${i + 1}/${totalPages}...`);
+
+    // Resolve chapter for this spine item before parsing.
+    const tocItem = toc.find(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (t: any) => t.href && item.href && t.href.split('#')[0] === item.href.split('#')[0],
+    );
+    const tocLabel = tocItem?.label?.trim();
+    if (tocLabel && tocLabel !== currentChapterLabel) {
+      currentChapterLabel = tocLabel;
+      if (!seenChapters.has(currentChapterLabel)) {
+        currentChapterIndex++;
+        seenChapters.set(currentChapterLabel, currentChapterIndex);
+      } else {
+        currentChapterIndex = seenChapters.get(currentChapterLabel)!;
+      }
+    }
 
     let pageData: PageData;
     try {
@@ -41,7 +65,12 @@ export async function loadEpub(
       if (isAbortError(err)) throw err;
       const message = err instanceof Error ? err.message : String(err);
       addLog(`Page ${i + 1} failed: ${message}`);
-      pageData = { label: item.href ?? `Page ${i + 1}`, tokens: [], loadError: message };
+      pageData = { label: `Page ${i + 1}`, tokens: [], loadError: message };
+    }
+
+    if (currentChapterLabel) {
+      pageData.chapterLabel = currentChapterLabel;
+      pageData.chapterIndex = currentChapterIndex;
     }
 
     collectedPages.push(pageData);
@@ -79,7 +108,7 @@ async function parseSpineItem(
     rawHtml = contents.documentElement.outerHTML;
   }
   if (!rawHtml) {
-    return { label: item.href ?? `Page ${i + 1}`, tokens: [], loadError: 'Empty content' };
+    return { label: `Page ${i + 1}`, tokens: [], loadError: 'Empty content' };
   }
   const doc = new DOMParser().parseFromString(rawHtml, 'text/html');
   const tokens: string[] = [];
@@ -158,7 +187,8 @@ async function parseSpineItem(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (t: any) => t.href && item.href && t.href.split('#')[0] === item.href.split('#')[0],
   );
-  const label = tocItem?.label?.trim() || item.href || `Page ${i + 1}`;
+  const tocLabel = tocItem?.label?.trim();
+  const label = tocLabel || `Page ${i + 1}`;
 
   void totalPages; // suppress lint warning — used in the caller's log
   return {

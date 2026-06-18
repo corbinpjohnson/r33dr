@@ -1,6 +1,46 @@
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
-const { spawn } = require('child_process');
+const fs = require('fs');
+const { spawn, execFile } = require('child_process');
+
+const summaryHelperPath = app.isPackaged
+  ? path.join(process.resourcesPath, 'SummaryHelper')
+  : path.join(__dirname, 'bin', 'SummaryHelper');
+
+ipcMain.handle('summarize-chapter', (_event, { text, chapterTitle }) => {
+  return new Promise((resolve) => {
+    if (!fs.existsSync(summaryHelperPath)) {
+      resolve({ summary: null, chunkCount: null, error: 'Summary helper not built — run: npm run build:swift' });
+      return;
+    }
+    const child = execFile(summaryHelperPath, [], { timeout: 120_000 }, (err, stdout) => {
+      if (err) { resolve({ summary: null, chunkCount: null, error: err.message }); return; }
+      try { resolve(JSON.parse(stdout)); }
+      catch { resolve({ summary: null, chunkCount: null, error: 'Malformed response from summary helper' }); }
+    });
+    child.stdin.write(JSON.stringify({ text, chapterTitle: chapterTitle ?? '' }));
+    child.stdin.end();
+  });
+});
+
+ipcMain.handle('read-notes', (_event, notesPath) => {
+  try {
+    return fs.existsSync(notesPath) ? fs.readFileSync(notesPath, 'utf8') : null;
+  } catch { return null; }
+});
+
+ipcMain.handle('write-notes', (_event, { notesPath, content }) => {
+  try {
+    fs.writeFileSync(notesPath, content, 'utf8');
+    return { ok: true };
+  } catch (err) { return { ok: false, error: err.message }; }
+});
+
+ipcMain.handle('read-file', async (_event, filePath) => {
+  const buf = fs.readFileSync(filePath);
+  // Transfer the underlying ArrayBuffer so it can be used directly in the renderer.
+  return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+});
 const isDev = !app.isPackaged;
 let viteProcess = null;
 
@@ -10,6 +50,7 @@ function createWindow() {
     height: 850,
     backgroundColor: '#0f172a',
     titleBarStyle: 'hiddenInset',
+    trafficLightPosition: { x: 8, y: 10 },
     show: false, // Don't show until ready-to-show
     webPreferences: {
       nodeIntegration: false,
