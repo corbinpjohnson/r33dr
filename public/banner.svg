@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="320" viewBox="0 0 1200 320" fill="none" role="img" aria-label="VibeReader">
+  <!-- Original banner artwork for VibeReader. Hand-authored, 2026 Corbin Johnson. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1200" y2="320" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#16131f"/>
+      <stop offset="1" stop-color="#1e1b2e"/>
+    </linearGradient>
+    <linearGradient id="word" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#5b8def"/>
+      <stop offset="1" stop-color="#a78bfa"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="320" fill="url(#bg)"/>
+
+  <!-- mark: open book + focal pivot -->
+  <g transform="translate(96 96)">
+    <rect width="128" height="128" rx="28" fill="#1e1b2e" stroke="#2e2a40" stroke-width="2"/>
+    <path d="M64 36 C52 28 38 26 26 28 V100 C38 98 52 100 64 108 Z" fill="#5b8def"/>
+    <path d="M64 36 C76 28 90 26 102 28 V100 C90 98 76 100 64 108 Z" fill="#a78bfa"/>
+    <rect x="61" y="34" width="6" height="66" rx="3" fill="#cbd5f5"/>
+    <circle cx="64" cy="88" r="9" fill="#f43f5e"/>
+  </g>
+
+  <!-- wordmark -->
+  <text x="280" y="150" font-family="-apple-system, Segoe UI, Helvetica, Arial, sans-serif" font-size="74" font-weight="800" fill="url(#word)">VibeReader</text>
+  <text x="282" y="200" font-family="-apple-system, Segoe UI, Helvetica, Arial, sans-serif" font-size="28" font-weight="500" fill="#9ca3c4">Speed-read any book — RSVP, OCR, and on-device AI summaries.</text>
+
+  <!-- RSVP stream motif: words flowing toward a focal point -->
+  <g font-family="-apple-system, Segoe UI, Helvetica, Arial, sans-serif" font-weight="600">
+    <text x="288" y="252" font-size="22" fill="#3b3850">the</text>
+    <text x="330" y="252" font-size="22" fill="#55506e">quick</text>
+    <text x="402" y="252" font-size="22" fill="#7b7498">brown</text>
+    <text x="486" y="252" font-size="24" fill="#f43f5e" font-weight="800">fox</text>
+    <text x="534" y="252" font-size="22" fill="#7b7498">jumps</text>
+    <text x="614" y="252" font-size="22" fill="#55506e">over</text>
+    <text x="676" y="252" font-size="22" fill="#3b3850">the</text>
+  </g>
+</svg>

@@ -2,3 +2,7 @@ node_modules
 dist
 dist-electron
 .DS_Store
+
+# Compiled Swift helper (build artifact — source lives in SummaryHelper/)
+bin/
+SummaryHelper/.build/

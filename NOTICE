@@ -1,0 +1,26 @@
+VibeReader
+Copyright (c) 2026 Corbin Johnson
+
+This product bundles and depends on third-party open-source software.
+The following components are redistributed under their respective licenses.
+
+-------------------------------------------------------------------------------
+Tesseract.js + Tesseract OCR core (WebAssembly) and the English trained data
+  Files: public/tesseract/**, public/tesseract/lang/eng.traineddata.gz
+  License: Apache License 2.0
+  https://github.com/naptha/tesseract.js
+  https://github.com/tesseract-ocr/tessdata
+
+pdf.js (pdfjs-dist)
+  License: Apache License 2.0
+  https://github.com/mozilla/pdf.js
+-------------------------------------------------------------------------------
+
+Other runtime dependencies and their licenses (installed via npm, not vendored):
+
+  react, react-dom, @tailwindcss/vite   MIT
+  epub.js (epubjs)                       BSD-2-Clause
+  lucide-react                           ISC
+
+A copy of the Apache License 2.0 is available at:
+  https://www.apache.org/licenses/LICENSE-2.0
