@@ -58,7 +58,7 @@ This project was **100% vibe-coded with [Claude](https://claude.com/claude-code)
 
 [MIT](LICENSE) © 2026 Corbin Johnson.
 
-You can use, modify, and ship this freely — commercial use included. If you build on r33dr, a shout-out to **corbinq27** is appreciated but not required. 🙏
+You can use, modify, and ship this freely — commercial use included. If you build on r33dr, a shout-out to **Corbin Johnson** is appreciated but not required. 🙏
 
 ### Credits
 
