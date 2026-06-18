@@ -86,7 +86,7 @@ function App() {
         >
           <div className="flex items-center gap-2">
             <Zap className="w-3.5 h-3.5 text-indigo-400 flex-none" />
-            <span className="text-[11px] font-black text-indigo-400 uppercase tracking-widest">VibeReader</span>
+            <span className="text-[11px] font-black text-indigo-400 uppercase tracking-widest">r33dr</span>
             <span className="text-slate-700 mx-1">·</span>
             <FileText className="w-3 h-3 text-slate-500 flex-none" />
             <span className="text-xs text-slate-400 truncate max-w-xs">{fileName}</span>
@@ -123,7 +123,7 @@ function App() {
           </div>
         </div>
         <h1 className="text-4xl font-black tracking-tight bg-gradient-to-br from-indigo-300 via-purple-400 to-indigo-400 bg-clip-text text-transparent">
-          VibeReader
+          r33dr
         </h1>
         <p className="text-slate-500 mt-2 text-sm">Blast through books with RSVP speed reading.</p>
       </div>

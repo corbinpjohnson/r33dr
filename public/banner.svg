@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="320" viewBox="0 0 1200 320" fill="none" role="img" aria-label="VibeReader">
-  <!-- Original banner artwork for VibeReader. Hand-authored, 2026 Corbin Johnson. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="320" viewBox="0 0 1200 320" fill="none" role="img" aria-label="r33dr">
+  <!-- Original banner artwork for r33dr. Hand-authored, 2026 Corbin Johnson. -->
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1200" y2="320" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#16131f"/>
@@ -22,7 +22,7 @@
   </g>
 
   <!-- wordmark -->
-  <text x="280" y="150" font-family="-apple-system, Segoe UI, Helvetica, Arial, sans-serif" font-size="74" font-weight="800" fill="url(#word)">VibeReader</text>
+  <text x="280" y="150" font-family="-apple-system, Segoe UI, Helvetica, Arial, sans-serif" font-size="74" font-weight="800" fill="url(#word)">r33dr</text>
   <text x="282" y="200" font-family="-apple-system, Segoe UI, Helvetica, Arial, sans-serif" font-size="28" font-weight="500" fill="#9ca3c4">Speed-read any book — RSVP, OCR, and on-device AI summaries.</text>
 
   <!-- RSVP stream motif: words flowing toward a focal point -->

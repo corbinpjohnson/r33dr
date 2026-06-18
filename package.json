@@ -1,12 +1,12 @@
 {
-  "name": "vibereader",
+  "name": "r33dr",
   "version": "0.1.0",
   "description": "Speed-read EPUB and PDF books with RSVP, OCR for scanned pages, and on-device AI chapter summaries. Electron + React desktop app.",
   "license": "MIT",
   "author": "Corbin Johnson",
   "repository": {
     "type": "git",
-    "url": "https://github.com/corbinpjohnson/vibereader.git"
+    "url": "https://github.com/corbinpjohnson/r33dr.git"
   },
   "type": "module",
   "main": "electron-main.cjs",
@@ -22,8 +22,8 @@
     "test:watch": "vitest"
   },
   "build": {
-    "appId": "com.vibereader.app",
-    "productName": "VibeReader",
+    "appId": "com.r33dr.app",
+    "productName": "r33dr",
     "directories": {
       "output": "dist-electron"
     },

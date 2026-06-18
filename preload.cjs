@@ -9,5 +9,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
 });
 
 window.addEventListener('DOMContentLoaded', () => {
-  console.log('VibeReader Preload Initialized');
+  console.log('r33dr Preload Initialized');
 });

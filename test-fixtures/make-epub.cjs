@@ -1,4 +1,4 @@
-// Generates a minimal valid EPUB for manual verification of VibeReader.
+// Generates a minimal valid EPUB for manual verification of r33dr.
 const JSZip = require('jszip');
 const fs = require('fs');
 const path = require('path');
@@ -25,7 +25,7 @@ async function main() {
 <package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="bookid">
   <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
     <dc:identifier id="bookid">urn:uuid:test-vibe-reader-0001</dc:identifier>
-    <dc:title>VibeReader Test Book</dc:title>
+    <dc:title>r33dr Test Book</dc:title>
     <dc:language>en</dc:language>
   </metadata>
   <manifest>

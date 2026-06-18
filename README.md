@@ -1,6 +1,6 @@
-![VibeReader](public/banner.svg)
+![r33dr](public/banner.svg)
 
-# VibeReader
+# r33dr
 
 A desktop **speed-reading app** for your own EPUB and PDF books. Open a book, then read it word-by-word with **RSVP** (Rapid Serial Visual Presentation) at whatever pace you can handle — with OCR for scanned PDFs and optional on-device AI chapter summaries.
 
@@ -56,15 +56,15 @@ This project was **100% vibe-coded with [Claude](https://claude.com/claude-code)
 
 [MIT](LICENSE) © 2026 Corbin Johnson.
 
-You can use, modify, and ship this freely — commercial use included. If you build on VibeReader, a shout-out to **corbinq27** is appreciated but not required. 🙏
+You can use, modify, and ship this freely — commercial use included. If you build on r33dr, a shout-out to **corbinq27** is appreciated but not required. 🙏
 
 ### Credits
 
-VibeReader bundles and depends on excellent open-source projects — see [`NOTICE`](NOTICE) for full attribution. Notably:
+r33dr bundles and depends on excellent open-source projects — see [`NOTICE`](NOTICE) for full attribution. Notably:
 
 - [Tesseract.js](https://github.com/naptha/tesseract.js) (Apache-2.0) — OCR
 - [pdf.js](https://github.com/mozilla/pdf.js) (Apache-2.0) — PDF rendering
 - [epub.js](https://github.com/futurepress/epub.js) (BSD-2-Clause) — EPUB parsing
 - [React](https://react.dev) (MIT) and [lucide](https://lucide.dev) (ISC) icons
 
-The VibeReader logo and banner are original artwork released under the same MIT license.
+The r33dr logo and banner are original artwork released under the same MIT license.

@@ -18,8 +18,8 @@ export default defineConfig({
         globIgnores: ['**/tesseract/**'],
       },
       manifest: {
-        name: 'VibeReader',
-        short_name: 'VibeReader',
+        name: 'r33dr',
+        short_name: 'r33dr',
         description: 'Minimalist EPUB Speed Reader',
         theme_color: '#0f172a',
         background_color: '#0f172a',

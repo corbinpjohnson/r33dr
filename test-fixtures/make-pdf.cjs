@@ -1,4 +1,4 @@
-// Generates a minimal valid 2-page text PDF for verifying VibeReader's PDF path.
+// Generates a minimal valid 2-page text PDF for verifying r33dr's PDF path.
 const fs = require('fs');
 const path = require('path');
 

@@ -1,7 +1,7 @@
 // Per-document reading state persisted to localStorage.
 
-const KEY_PREFIX = 'vibereader:doc:';
-const SETTINGS_KEY = 'vibereader:settings';
+const KEY_PREFIX = 'r33dr:doc:';
+const SETTINGS_KEY = 'r33dr:settings';
 const SCHEMA_VERSION = 1;
 
 export interface Bookmark {
@@ -113,7 +113,7 @@ export interface RecentEntry {
   filePath?: string; // native path, only available in Electron
 }
 
-const RECENTS_KEY = 'vibereader:recents';
+const RECENTS_KEY = 'r33dr:recents';
 const MAX_RECENTS = 6;
 
 export function loadRecents(): RecentEntry[] {
