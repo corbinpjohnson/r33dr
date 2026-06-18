@@ -8,6 +8,14 @@ A desktop **speed-reading app** for your own EPUB and PDF books. Open a book, th
 
 Everything runs locally. Your books never leave your machine.
 
+## Screenshots
+
+| Open a book | Read at speed |
+|:---:|:---:|
+| ![Home screen](docs/screenshots/01-home.png) | ![RSVP reader](docs/screenshots/03-rsvp.png) |
+
+In the reader, each word flashes one at a time with the optimal-recognition-point letter highlighted, so your eyes stay fixed while the text streams past — with the pacing engine and AI tools in the side rail.
+
 ## Features
 
 - 📖 **EPUB & PDF loading** — streaming loaders with abort support for large files
